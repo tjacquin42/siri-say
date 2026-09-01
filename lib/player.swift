@@ -24,6 +24,9 @@ let titre = a[2]
 let dureeEstimee = Double(a[3]) ?? 0
 let vitesseInitiale = a.count > 4 ? (Double(a[4]) ?? 0) : 0
 
+/// Pas des boutons de recul et d'avance, en secondes.
+let SAUT: Double = 5
+
 /// L'écran intégré, pas l'écran actif : `NSScreen.main` désigne celui qui a le
 /// focus, et pour une app d'arrière-plan avec un moniteur externe branché il
 /// renvoie le mauvais. On prend celui qui a une encoche.
@@ -193,13 +196,13 @@ func majSysteme() {
 let commandes = MPRemoteCommandCenter.shared()
 for c in [commandes.playCommand, commandes.pauseCommand, commandes.togglePlayPauseCommand,
           commandes.skipForwardCommand, commandes.skipBackwardCommand] { c.isEnabled = true }
-commandes.skipForwardCommand.preferredIntervals = [15]
-commandes.skipBackwardCommand.preferredIntervals = [15]
+commandes.skipForwardCommand.preferredIntervals = [NSNumber(value: SAUT)]
+commandes.skipBackwardCommand.preferredIntervals = [NSNumber(value: SAUT)]
 commandes.playCommand.addTarget { _ in lecture.demarre(); majSysteme(); return .success }
 commandes.pauseCommand.addTarget { _ in lecture.file.pause(); majSysteme(); return .success }
 commandes.togglePlayPauseCommand.addTarget { _ in lecture.bascule(); majSysteme(); return .success }
-commandes.skipForwardCommand.addTarget { _ in lecture.decale(15); majSysteme(); return .success }
-commandes.skipBackwardCommand.addTarget { _ in lecture.decale(-15); majSysteme(); return .success }
+commandes.skipForwardCommand.addTarget { _ in lecture.decale(SAUT); majSysteme(); return .success }
+commandes.skipBackwardCommand.addTarget { _ in lecture.decale(-SAUT); majSysteme(); return .success }
 
 // ------------------------------------------------------------------ panneau
 func mmss(_ s: Double) -> String {
@@ -277,9 +280,9 @@ final class Panneau: NSView {
             b.action = sel
             addSubview(b)
         }
-        bouton(bArriere, "gobackward.15", "Reculer de 15 secondes", 15, #selector(reculer))
+        bouton(bArriere, "gobackward.5", "Reculer de 5 secondes", 15, #selector(reculer))
         bouton(bPause, "pause.fill", "Pause", 21, #selector(basculer))
-        bouton(bAvant, "goforward.15", "Avancer de 15 secondes", 15, #selector(avancer))
+        bouton(bAvant, "goforward.5", "Avancer de 5 secondes", 15, #selector(avancer))
         bouton(bQuitter, "xmark", "Fermer et arrêter la lecture", 11, #selector(quitter))
         bQuitter.contentTintColor = NSColor.white.withAlphaComponent(0.55)
 
@@ -294,8 +297,8 @@ final class Panneau: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     @objc func basculer() { onBascule?() }
-    @objc func avancer() { onDecale?(15) }
-    @objc func reculer() { onDecale?(-15) }
+    @objc func avancer() { onDecale?(SAUT) }
+    @objc func reculer() { onDecale?(-SAUT) }
     @objc func quitter() { onQuitter?() }
     @objc func changeVitesse() { onVitesse?() }
 

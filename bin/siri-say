@@ -37,7 +37,7 @@ siri-say — lecture à voix haute avec la voix Siri de macOS.
   siri-say --out lu.caf notes.md   écrit un fichier audio au lieu de lire
 
 Options
-  -i, --island        lecteur dans l'encoche : pause, ±15 s, vitesse, touches
+  -i, --island        lecteur dans l'encoche : pause, ±5 s, vitesse, touches
                       média du clavier, et le terminal reste libre
   -s, --speed <0.5..2> vitesse de lecture, modifiable en cours d'écoute (-i)
   -r, --rate <0..1>   débit d'articulation de la voix (défaut : 0.5)
