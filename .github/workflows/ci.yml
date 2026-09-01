@@ -46,6 +46,11 @@ jobs:
           S="$RUNNER_TEMP/prefix/bin/siri-say"
           "$S" --help | head -3
 
+          # Installé hors de ~/.local, le script doit trouver sa bibliothèque —
+          # par son nom réel comme par le raccourci symbolique.
+          "$S" -n "installation dans un prefixe" | grep -q "prefixe"
+          "$RUNNER_TEMP/prefix/bin/siri" -n "par le raccourci" | grep -q "raccourci"
+
           # Une phrase contenant une URL est du texte, pas un chemin.
           "$S" -n "voir [la doc](https://exemple.fr/a/b) ici" | grep -q "voir la doc ici"
 
