@@ -2,8 +2,19 @@
 # siri-say — lit du texte, du Markdown ou un PDF avec la voix Siri de macOS.
 set -euo pipefail
 
+# La bibliothèque se déduit de l'emplacement réel de ce script, en suivant les
+# liens symboliques : une installation avec --prefix doit fonctionner, et le
+# raccourci « siri » est un lien qu'il faut résoudre avant de remonter d'un cran.
+CIBLE="${BASH_SOURCE[0]}"
+while [ -L "$CIBLE" ]; do
+  D="$(cd -P "$(dirname "$CIBLE")" && pwd)"
+  CIBLE="$(readlink "$CIBLE")"
+  case "$CIBLE" in /*) ;; *) CIBLE="$D/$CIBLE" ;; esac
+done
+RACINE="$(cd -P "$(dirname "$CIBLE")/.." && pwd)"
+
 # Les anciennes variables SIRI_* restent acceptées en repli.
-LIB="${SIRI_SAY_LIB:-${SIRI_LIB:-$HOME/.local/share/siri-say}}"
+LIB="${SIRI_SAY_LIB:-${SIRI_LIB:-$RACINE/share/siri-say}}"
 VOIX="${SIRI_SAY_VOICE:-${SIRI_VOICE:-com.apple.siri.natural.Marie}}"
 DEBIT="${SIRI_SAY_RATE:-${SIRI_RATE:-0.5}}"
 VITESSE="${SIRI_SAY_SPEED:-0}"
