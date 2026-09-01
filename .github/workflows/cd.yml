@@ -1,0 +1,73 @@
+name: CD
+
+# La livraison de ce dépôt : ce qui arrive sur `main` devient une version.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  version-check:
+    # Ce job avertit, il ne bloque pas : la livraison sait retomber sur « patch ».
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: La PR annonce-t-elle son niveau de version ?
+        id: niveau
+        # Le corps passe par l'environnement, jamais interpolé dans le script :
+        # `${{ }}` en plein `run` exécuterait ce qu'un corps de PR contient.
+        env:
+          CORPS: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          NIVEAU=$(printf '%s\n' "${CORPS:-}" | tr -d '\r' \
+                   | grep -iE '^[[:space:]]*Version:[[:space:]]*(major|minor|patch)' | head -1 \
+                   | sed -E 's/^[[:space:]]*[Vv]ersion:[[:space:]]*//' | awk '{print tolower($1)}' || true)
+          if [ -n "$NIVEAU" ]; then
+            echo "Niveau annoncé : **$NIVEAU**" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Cette PR n'annonce pas son niveau de version. Ajoute « Version: major|minor|patch » au corps, sinon la livraison posera un patch."
+          fi
+          echo "niveau=${NIVEAU:-}" >> "$GITHUB_OUTPUT"
+
+      - name: Le numéro a-t-il été posé dans VERSION ?
+        env:
+          NIVEAU: ${{ steps.niveau.outputs.niveau }}
+        run: |
+          set -euo pipefail
+          APRES=$(tr -d '[:space:]' < VERSION)
+          AVANT=$(git show "origin/${GITHUB_BASE_REF}:VERSION" 2>/dev/null | tr -d '[:space:]' || echo "")
+          if [ "$APRES" = "$AVANT" ]; then
+            echo "::warning::VERSION est resté à $AVANT. Lance « scripts/set-version.sh ${NIVEAU:-patch} », commit, et repousse."
+          else
+            echo "VERSION : $AVANT → $APRES" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  livraison:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Poser le tag et la Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          V=$(tr -d '[:space:]' < VERSION)
+          if git rev-parse "v$V" >/dev/null 2>&1; then
+            echo "v$V existe déjà : rien à livrer."
+            exit 0
+          fi
+          git tag "v$V"
+          git push origin "v$V"
+          gh release create "v$V" --title "v$V" --generate-notes

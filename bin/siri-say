@@ -1,0 +1,169 @@
+#!/bin/bash
+# siri-say — lit du texte, du Markdown ou un PDF avec la voix Siri de macOS.
+set -euo pipefail
+
+# Les anciennes variables SIRI_* restent acceptées en repli.
+LIB="${SIRI_SAY_LIB:-${SIRI_LIB:-$HOME/.local/share/siri-say}}"
+VOIX="${SIRI_SAY_VOICE:-${SIRI_VOICE:-com.apple.siri.natural.Marie}}"
+DEBIT="${SIRI_SAY_RATE:-${SIRI_RATE:-0.5}}"
+VITESSE="${SIRI_SAY_SPEED:-0}"
+FRAGMENT="${SIRI_SAY_CHUNK:-${SIRI_CHUNK:-1400}}"
+PREMIER="${SIRI_SAY_FIRST_CHUNK:-${SIRI_FIRST_CHUNK:-380}}"
+SORTIE="-"
+# Un seul emplacement de travail, effacé à chaque nouvelle lecture : les
+# fragments audio ne doivent jamais s'empiler.
+BASE="${TMPDIR:-/tmp}/siri-say"
+
+aide() {
+  cat <<'TXT'
+siri-say — lecture à voix haute avec la voix Siri de macOS.
+
+  siri-say "du texte"              lit l'argument
+  siri-say notes.md                lit un fichier texte, Markdown ou PDF
+  cat notes.md | siri-say          lit l'entrée standard
+  siri-say -i cadrage.pdf          lit dans l'encoche, et rend la main
+  siri-say --list-voices           liste les voix Siri disponibles
+  siri-say --out lu.caf notes.md   écrit un fichier audio au lieu de lire
+
+Options
+  -i, --island        lecteur dans l'encoche : pause, ±15 s, vitesse, touches
+                      média du clavier, et le terminal reste libre
+  -s, --speed <0.5..2> vitesse de lecture, modifiable en cours d'écoute (-i)
+  -r, --rate <0..1>   débit d'articulation de la voix (défaut : 0.5)
+  -v, --voice <id>    identifiant de voix (défaut : la première voix Siri)
+  -o, --out <fichier> écrit l'audio au lieu de le jouer
+  -n, --dry-run       affiche le texte préparé sans le lire
+  -q, --quit          arrête la lecture d'encoche en cours
+  -h, --help          cette aide
+
+--rate change la façon dont la voix articule et se fige à la synthèse ;
+--speed accélère la lecture d'un audio déjà fabriqué et se règle à la volée.
+
+Sans -i, la lecture démarre tout de suite et occupe le terminal ; Ctrl-C l'arrête.
+Avec -i, elle démarre dès le premier fragment et la suite se synthétise pendant
+l'écoute — un long PDF demanderait sinon plusieurs minutes de silence.
+
+Variables : SIRI_SAY_VOICE, SIRI_SAY_RATE, SIRI_SAY_SPEED, SIRI_SAY_CHUNK.
+Détails : man siri-say
+TXT
+}
+
+# Arrête le lecteur d'encoche et efface ses fragments.
+arrete_encoche() {
+  pkill -f "$LIB/SiriPlayer.app/Contents/MacOS/player" 2>/dev/null || true
+  sleep 0.3   # laisse au lecteur le temps de faire son propre ménage
+  rm -rf "$BASE" 2>/dev/null || true
+}
+
+DRY=0
+ILE=0
+ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)        aide; exit 0 ;;
+    --list-voices)    exec swift "$LIB/tts.swift" --list ;;
+    -q|--quit)        arrete_encoche; echo "siri-say : lecture arrêtée."; exit 0 ;;
+    -i|--island)      ILE=1; shift ;;
+    -s|--speed)       VITESSE="$2"; shift 2 ;;
+    -r|--rate)        DEBIT="$2"; shift 2 ;;
+    -v|--voice)       VOIX="$2"; shift 2 ;;
+    -o|--out)         SORTIE="$2"; shift 2 ;;
+    -n|--dry-run)     DRY=1; shift ;;
+    --)               shift; ARGS+=("$@"); break ;;
+    -*)               echo "siri-say : option inconnue « $1 »." >&2; exit 2 ;;
+    *)                ARGS+=("$1"); shift ;;
+  esac
+done
+
+if ! awk -v v="$VITESSE" 'BEGIN{exit !(v == 0 || (v >= 0.5 && v <= 2))}'; then
+  echo "siri-say : --speed attend une valeur entre 0.5 et 2 (reçu « $VITESSE »)." >&2
+  exit 2
+fi
+
+# Sans argument ET sans entrée redirigée, il n'y a rien à lire : afficher
+# l'usage plutôt que d'attendre indéfiniment sur un terminal.
+if [ ${#ARGS[@]} -eq 0 ] && [ -t 0 ]; then
+  aide; exit 0
+fi
+
+TITRE=""
+if [ ${#ARGS[@]} -eq 0 ]; then
+  TEXTE="$(python3 "$LIB/prepare.py")"                 # entrée standard
+elif [ -f "${ARGS[0]}" ]; then
+  TEXTE="$(python3 "$LIB/prepare.py" --file "${ARGS[0]}")"
+  TITRE="$(basename "${ARGS[0]}")"
+else
+  # Un argument qui ressemble à un chemin mais n'existe pas est une erreur,
+  # pas du texte : sinon la voix épelle « slash chemin slash qui ».
+  # L'absence d'espace fait la différence — une phrase contenant une URL ou
+  # une date en 12/09 reste du texte, et doit être lue.
+  BRUT="${ARGS[*]}"
+  case "$BRUT" in
+    *[[:space:]]*) ;;                                   # une phrase : on lit
+    */*|*.md|*.txt|*.pdf|*.markdown|*.mdx)
+      echo "siri-say : fichier introuvable « $BRUT »." >&2; exit 1 ;;
+  esac
+  TEXTE="$(python3 "$LIB/prepare.py" "${ARGS[*]}")"
+fi
+
+# grep plutôt qu'une substitution de motif : bash 3.2 est quadratique là-dessus,
+# ce qui bloquait plusieurs minutes sur un PDF de 40 000 caractères.
+if ! printf '%s' "$TEXTE" | grep -q '[^[:space:]]'; then
+  echo "siri-say : rien à lire." >&2; exit 1
+fi
+
+if [ "$DRY" -eq 1 ]; then printf '%s\n' "$TEXTE"; exit 0; fi
+
+# ------------------------------------------------------------------ encoche
+if [ "$ILE" -eq 1 ]; then
+  [ -n "$TITRE" ] || TITRE="$(printf '%s' "$TEXTE" | head -c 46 | tr '\n' ' ')"
+
+  # Une lecture à la fois : la précédente et ses fragments s'en vont.
+  arrete_encoche
+  DOSSIER="$BASE/courant"
+  mkdir -p "$DOSSIER"
+
+  # Découpe, puis synthèse du seul premier fragment : la lecture démarre
+  # pendant que les suivants se fabriquent.
+  read -r NB DUREE <<<"$(printf '%s' "$TEXTE" | python3 "$LIB/prepare.py" --split "$DOSSIER" "$FRAGMENT" "$PREMIER")"
+
+  synthetise() {
+    local pad
+    pad="$(printf '%03d' "$1")"
+    swift "$LIB/tts.swift" "$VOIX" "$DEBIT" "$DOSSIER/chunk_$pad.part" \
+      < "$DOSSIER/chunk_$pad.txt" >/dev/null 2>&1 \
+      && mv "$DOSSIER/chunk_$pad.part" "$DOSSIER/chunk_$pad.caf"
+  }
+
+  if ! synthetise 0; then
+    echo "siri-say : la synthèse a échoué." >&2; rm -rf "$DOSSIER"; exit 1
+  fi
+
+  # `open -a` refuse un bundle auto-signé (erreur -10825) ; lancé directement,
+  # le binaire garde son identité et s'inscrit bien dans « En cours de lecture ».
+  ( "$LIB/SiriPlayer.app/Contents/MacOS/player" "$DOSSIER" "$TITRE" "$DUREE" "$VITESSE" \
+      >/dev/null 2>&1 </dev/null & )
+  disown 2>/dev/null || true
+
+  if [ "$NB" -gt 1 ]; then
+    (
+      for i in $(seq 1 $((NB - 1))); do
+        # Le lecteur efface le dossier en partant : sa disparition est le
+        # signal d'arrêt de la synthèse.
+        [ -d "$DOSSIER" ] || exit 0
+        synthetise "$i"
+      done
+      [ -d "$DOSSIER" ] && touch "$DOSSIER/.done"
+    ) >/dev/null 2>&1 </dev/null &
+    disown 2>/dev/null || true
+  else
+    touch "$DOSSIER/.done"
+  fi
+
+  MIN="$(awk -v d="$DUREE" 'BEGIN{printf "%d", (d+30)/60}')"
+  echo "siri-say : « $TITRE » — $NB fragment(s), environ $MIN min. Survolez l'encoche."
+  exit 0
+fi
+
+# ------------------------------------------------------------ lecture en flux
+printf '%s' "$TEXTE" | swift "$LIB/tts.swift" "$VOIX" "$DEBIT" "$SORTIE"

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev]
+
+jobs:
+  verification:
+    # macOS obligatoire : le lecteur dépend d'AVFoundation et de MediaPlayer,
+    # et les voix Siri n'existent nulle part ailleurs.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tests de préparation du texte
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Compilation du lecteur d'encoche
+        run: swiftc -O lib/player.swift -o /tmp/player
+
+      - name: Le moteur de synthèse s'analyse-t-il ?
+        # tts.swift reste interprété à l'exécution — les voix Siri ne sont
+        # visibles que d'un binaire signé par Apple, et `swift` en est un.
+        # On vérifie seulement qu'il compile, sans garder le binaire.
+        run: swiftc -typecheck lib/tts.swift
+
+      - name: Syntaxe des scripts shell
+        run: |
+          bash -n bin/siri-say
+          bash -n install.sh
+          bash -n uninstall.sh
+          bash -n scripts/set-version.sh
+
+      - name: La page de manuel est-elle valide ?
+        run: mandoc -T lint -W warning man/siri-say.1 || true
+
+      - name: Installation complète dans un préfixe jetable
+        run: |
+          set -euo pipefail
+          ./install.sh --prefix "$RUNNER_TEMP/prefix" --alias siri
+          test -x "$RUNNER_TEMP/prefix/bin/siri-say"
+          test -L "$RUNNER_TEMP/prefix/bin/siri"
+          test -x "$RUNNER_TEMP/prefix/share/siri-say/SiriPlayer.app/Contents/MacOS/player"
+          S="$RUNNER_TEMP/prefix/bin/siri-say"
+          "$S" --help | head -3
+
+          # Une phrase contenant une URL est du texte, pas un chemin.
+          "$S" -n "voir [la doc](https://exemple.fr/a/b) ici" | grep -q "voir la doc ici"
+
+          # Un chemin sans espace qui n'existe pas est une erreur, pas du texte.
+          if "$S" -n /chemin/absent.md 2>/dev/null; then
+            echo "un chemin inexistant aurait dû échouer" >&2; exit 1
+          fi
+
+          # Le balisage Markdown ne doit jamais être prononcé.
+          printf '## Titre\n\n```sh\nrm -rf /\n```\n' | "$S" -n | grep -qv "rm -rf"
+
+          # Vitesse hors bornes refusée.
+          if "$S" -s 3 "x" 2>/dev/null; then echo "--speed 3 aurait dû échouer" >&2; exit 1; fi

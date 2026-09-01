@@ -1,0 +1,162 @@
+.TH SIRI-SAY 1 "1 septembre 2026" "siri-say" "Commandes utilisateur"
+.SH NOM
+siri\-say \- lit du texte, du Markdown ou un PDF à voix haute avec la voix Siri de macOS
+.SH SYNOPSIS
+.B siri\-say
+.RI [ options ]
+.RI [ texte | fichier ]
+.br
+.B cat
+.I fichier
+.B | siri\-say
+.RI [ options ]
+.SH DESCRIPTION
+.B siri\-say
+prononce du texte avec la voix Siri française de macOS.
+Il accepte du texte brut en argument, un chemin de fichier, ou l'entrée standard.
+Les fichiers
+.BR .md ,
+.B .markdown
+et
+.B .txt
+sont nettoyés de leur balisage avant lecture, et les fichiers
+.B .pdf
+sont extraits automatiquement.
+.PP
+Sans argument et sans entrée redirigée, la commande affiche son aide.
+.PP
+Deux modes de lecture coexistent. Par défaut, la lecture démarre presque
+aussitôt et occupe le terminal jusqu'à la fin ;
+.B Ctrl\-C
+l'interrompt. Avec
+.BR \-i ,
+la lecture est confiée à un lecteur affiché sous l'encoche du MacBook, le
+terminal est rendu immédiatement, et le clavier pilote la lecture par ses
+touches média.
+.SH OPTIONS
+.TP
+.BR \-i ", " \-\-island
+Lecture dans l'encoche. Le texte est découpé en fragments : le premier est
+synthétisé puis joué pendant que les suivants se fabriquent, ce qui évite
+plusieurs minutes de silence sur un long document. Le panneau se déplie au
+survol de l'encoche et offre pause, recul et avance de quinze secondes, une
+ligne de progression cliquable, un réglage de vitesse et une croix de
+fermeture. La lecture apparaît aussi dans le Centre de contrôle et répond aux
+touches média du clavier.
+.PP
+À la fin de la lecture, le lecteur reste en place, position figée sur la fin,
+prêt à relire : le bouton central recommence depuis le début. Seules la croix
+du panneau et
+.B siri\-say \-q
+le ferment et effacent ses fichiers de travail.
+.TP
+.BR \-s ", " \-\-speed " " \fI0.5..2\fR
+Vitesse de lecture. Contrairement à
+.BR \-\-rate ,
+elle s'applique à un audio déjà fabriqué et se règle en cours d'écoute : la
+pastille du panneau fait défiler 0,75× 1× 1,25× 1,5× 1,75× 2×. Le timbre de la
+voix est préservé à l'accélération. Le dernier réglage est retenu d'une lecture
+à l'autre.
+.TP
+.BR \-r ", " \-\-rate " " \fI0..1\fR
+Débit d'articulation de la voix, figé au moment de la synthèse. 0.5 par défaut.
+.TP
+.BR \-q ", " \-\-quit
+Arrête la lecture d'encoche en cours et efface ses fichiers de travail.
+.TP
+.BR \-v ", " \-\-voice " " \fIidentifiant\fR
+Choisit la voix. Par défaut la première voix Siri disponible.
+.TP
+.BR \-o ", " \-\-out " " \fIfichier\fR
+Écrit l'audio dans un fichier au lieu de le jouer.
+.TP
+.BR \-n ", " \-\-dry\-run
+Affiche le texte tel qu'il sera prononcé, sans le lire. Utile pour vérifier le
+nettoyage d'un Markdown ou l'extraction d'un PDF.
+.TP
+.B \-\-list\-voices
+Liste les voix Siri réellement adressables, avec leur identifiant.
+.TP
+.BR \-h ", " \-\-help
+Affiche l'aide.
+.SH VOIX
+Seules les voix Siri installées sont utilisables, et macOS ne les expose pas
+toutes. Pour en ajouter, passer par
+.B Réglages Système
+>
+.B Accessibilité
+>
+.B Contenu énoncé
+>
+.BR "Voix du système" ,
+puis vérifier avec
+.BR "siri\-say \-\-list\-voices" .
+.PP
+La commande
+.BR say (1)
+livrée avec macOS ne peut pas atteindre ces voix : elle retombe en silence sur
+la voix par défaut tout en renvoyant un code de succès.
+.SH FICHIERS
+.TP
+.B ~/.local/bin/siri\-say
+La commande.
+.TP
+.B ~/.local/share/siri\-say/
+Bibliothèque et lecteur d'encoche.
+.TP
+.B $TMPDIR/siri\-say/
+Fragments audio de la lecture en cours. Ce dossier est effacé au lancement
+d'une nouvelle lecture et à la fermeture du lecteur : rien ne s'y accumule.
+.SH VARIABLES D'ENVIRONNEMENT
+Les variantes historiques sans le préfixe
+.B SIRI_SAY_
+restent acceptées.
+.TP
+.B SIRI_SAY_VOICE
+Identifiant de voix par défaut.
+.TP
+.B SIRI_SAY_RATE
+Débit d'articulation par défaut.
+.TP
+.B SIRI_SAY_SPEED
+Vitesse de lecture par défaut.
+.TP
+.B SIRI_SAY_CHUNK
+Taille des fragments en mode encoche, en caractères. 1400 par défaut.
+.TP
+.B SIRI_SAY_FIRST_CHUNK
+Taille du premier fragment, qui fixe le délai avant le premier mot prononcé.
+380 par défaut.
+.SH EXEMPLES
+.TP
+Lire un paragraphe :
+.B siri\-say "Le monitoring tourne depuis trois semaines."
+.TP
+Lire un rapport en gardant son terminal :
+.B siri\-say \-i rapport.md
+.TP
+Écouter un PDF de vingt pages à une fois et demie :
+.B siri\-say \-i \-s 1.5 cadrage.pdf
+.TP
+Vérifier ce qui sera prononcé, sans le lire :
+.B siri\-say \-n cadrage.pdf | head \-40
+.TP
+Fabriquer un fichier audio :
+.B siri\-say \-o lecture.caf notes.md
+.SH DIAGNOSTIC
+.TP
+.B siri-say : rien à lire.
+Le texte préparé est vide. Sur un PDF composé d'images scannées, l'extraction
+ne donne rien : il n'y a pas de couche texte.
+.TP
+.B siri-say : fichier introuvable
+L'argument ressemble à un chemin mais n'existe pas. Pour lire littéralement une
+chaîne contenant une barre oblique, passer par l'entrée standard.
+.TP
+Le panneau ne s'affiche pas
+Il n'apparaît que pendant une lecture lancée avec
+.BR \-i ,
+et uniquement sur l'écran intégré du Mac, qui est le seul à avoir une encoche.
+.SH VOIR AUSSI
+.BR say (1),
+.BR pdftotext (1)
