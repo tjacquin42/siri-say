@@ -124,6 +124,21 @@ anything is spoken.
 
 ---
 
+## Tests and coverage
+
+Unit tests cover the text-preparation logic in `lib/prepare.py` (`unittest`, no extra
+dependency):
+
+```bash
+uvx --from coverage coverage run --source=lib -m unittest discover -s tests
+uvx --from coverage coverage report -m
+```
+
+Swift (`lib/player.swift`, `lib/tts.swift`) and the shell scripts have no unit coverage
+measurement — the install smoke test in CI covers them instead.
+
+---
+
 ## Troubleshooting
 
 **Nothing appears when I hover the notch.** The panel only exists while a `-i` reading
