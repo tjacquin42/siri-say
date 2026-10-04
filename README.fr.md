@@ -127,6 +127,21 @@ tableaux et marques de titres avant que quoi que ce soit ne soit prononcé.
 
 ---
 
+## Tests et couverture
+
+Les tests unitaires couvrent la préparation du texte dans `lib/prepare.py` (`unittest`,
+sans dépendance supplémentaire) :
+
+```bash
+uvx --from coverage coverage run --source=lib -m unittest discover -s tests
+uvx --from coverage coverage report -m
+```
+
+Le Swift (`lib/player.swift`, `lib/tts.swift`) et le shell n'ont pas de mesure de
+couverture unitaire — le test d'installation de la CI les couvre à sa façon.
+
+---
+
 ## En cas de problème
 
 **Rien n'apparaît quand je survole l'encoche.** Le panneau n'existe que pendant une
